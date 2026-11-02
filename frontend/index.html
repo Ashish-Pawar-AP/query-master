@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Query Master</title>
+    <script>
+      // Applied synchronously, before first paint, so a saved "light" preference doesn't
+      // flash dark for a frame while React/ThemeProvider mount. Defaults to dark (the
+      // TRD's stated default) when nothing is saved yet.
+      (function () {
+        var saved = localStorage.getItem("query-master-theme");
+        var theme = saved === "light" ? "light" : "dark";
+        document.documentElement.classList.toggle("dark", theme === "dark");
+      })();
+    </script>
+  </head>
+  <body class="bg-surface text-slate-100 antialiased">
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
