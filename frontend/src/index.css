@@ -1,0 +1,373 @@
+@import "tailwindcss";
+
+/* Tailwind v4 is configured here, in CSS, instead of tailwind.config.js. */
+
+/* The app toggles a `.dark` class on <html> (see hooks/useTheme.jsx) — this keeps any
+   future `dark:` utility consistent with that mechanism. Today the theme itself runs on
+   the CSS variables below, not on `dark:` utilities. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Static design tokens — identical in light and dark. */
+@theme {
+  --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-primary: #10b981;
+  --color-primary-50: #ecfdf5;
+  --color-primary-100: #d1fae5;
+  --color-primary-200: #a7f3d0;
+  --color-primary-300: #6ee7b7;
+  --color-primary-400: #34d399;
+  --color-primary-500: #10b981;
+  --color-primary-600: #059669;
+  --color-primary-700: #047857;
+  --color-primary-800: #065f46;
+  --color-primary-900: #064e3b;
+  --color-accent: #3b82f6;
+
+  --shadow-glow-primary: 0 0 0 1px rgba(16, 185, 129, 0.15), 0 8px 24px -8px rgba(16, 185, 129, 0.35);
+  --shadow-glow-primary-sm: 0 0 0 1px rgba(16, 185, 129, 0.12), 0 4px 12px -4px rgba(16, 185, 129, 0.25);
+  --shadow-glow-amber: 0 4px 16px -4px rgba(245, 158, 11, 0.35);
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Theme-switching tokens. `inline` makes each utility emit the underlying value directly
+   (e.g. `background-color: rgb(var(--surface-raised))`) rather than going through an
+   intermediate --color-* variable, so toggling `.dark` repaints everything immediately.
+   The values are the space-separated RGB triplets defined in :root / .dark below. Opacity
+   modifiers (`bg-surface-raised/70`) work on them natively in v4 via color-mix().
+
+   Only the surface namespace and the slate text/border shades the app actually uses
+   (100-800) flip with the theme. slate-50/900/950 keep Tailwind's own values on purpose:
+   they're used for fixed dark text on bright surfaces (e.g. button labels), which must
+   NOT change with the theme. */
+@theme inline {
+  --color-surface-deep: rgb(var(--surface-deep));
+  --color-surface: rgb(var(--surface-default));
+  --color-surface-raised: rgb(var(--surface-raised));
+  --color-surface-overlay: rgb(var(--surface-overlay));
+  --color-surface-border: rgb(var(--surface-border));
+  --color-surface-border-soft: var(--surface-border-soft);
+
+  /* Accent TEXT (active nav, links, badge text) — separate from the numeric primary
+     scale because those shades are also button/hover BACKGROUNDS, which must not darken
+     in light mode the way text needs to for contrast. */
+  --color-primary-text: rgb(var(--primary-text));
+
+  --color-slate-100: rgb(var(--slate-100));
+  --color-slate-200: rgb(var(--slate-200));
+  --color-slate-300: rgb(var(--slate-300));
+  --color-slate-400: rgb(var(--slate-400));
+  --color-slate-500: rgb(var(--slate-500));
+  --color-slate-600: rgb(var(--slate-600));
+  --color-slate-700: rgb(var(--slate-700));
+  --color-slate-800: rgb(var(--slate-800));
+
+  --shadow-elevated: 0 1px 0 0 rgb(var(--surface-border) / 0.4) inset, 0 12px 32px -12px var(--shadow-ambient);
+  --shadow-panel: 0 1px 0 0 rgb(var(--surface-border) / 0.3) inset, 0 24px 64px -20px var(--shadow-ambient);
+}
+
+/* v4 has no theme namespace for background images, so custom ones are utilities. */
+@utility bg-grid-pattern {
+  background-image:
+    linear-gradient(var(--surface-border-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--surface-border-soft) 1px, transparent 1px);
+}
+
+@layer base {
+  /* v4 changed the default border color from light gray to currentColor. Default any
+     un-colored border to the themed border color instead. */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: rgb(var(--surface-border));
+  }
+
+  /* v4 preflight no longer gives buttons a pointer cursor. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+/* Theme variables — space-separated RGB triplets. Light values live in :root as the
+   default; `.dark` on <html> (toggled by ThemeProvider) overrides them. Brand (primary)
+   and semantic accent colors (red/amber/emerald/blue) stay the same in both themes. */
+:root {
+  color-scheme: light;
+
+  --surface-deep: 7 9 15; /* fixed modal scrim — always dark, doesn't flip with theme */
+
+  --surface-default: 248 250 252;
+  --surface-raised: 255 255 255;
+  --surface-overlay: 255 255 255;
+  --surface-border: 226 232 240;
+  --surface-border-soft: rgba(15, 23, 42, 0.08);
+  --shimmer-highlight: rgba(15, 23, 42, 0.06);
+
+  --slate-100: 15 23 42;
+  --slate-200: 30 41 59;
+  --slate-300: 51 65 85;
+  --slate-400: 71 85 105;
+  --slate-500: 100 116 139;
+  --slate-600: 148 163 184;
+  --slate-700: 203 213 225;
+  --slate-800: 226 232 240;
+
+  --primary-text: 5 150 105; /* emerald-600 — text on light surfaces needs a darker, readable green */
+
+  --shadow-ambient: rgba(15, 23, 42, 0.12);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --surface-default: 11 15 26;
+  --surface-raised: 18 24 38;
+  --surface-overlay: 22 29 46;
+  --surface-border: 35 44 64;
+  --surface-border-soft: rgba(148, 163, 184, 0.08);
+  --shimmer-highlight: rgba(148, 163, 184, 0.1);
+
+  --slate-100: 241 245 249;
+  --slate-200: 226 232 240;
+  --slate-300: 203 213 225;
+  --slate-400: 148 163 184;
+  --slate-500: 100 116 139;
+  --slate-600: 71 85 105;
+  --slate-700: 51 65 85;
+  --slate-800: 30 41 59;
+
+  --primary-text: 52 211 153; /* emerald-400 */
+
+  --shadow-ambient: rgba(0, 0, 0, 0.6);
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background-color: rgb(var(--surface-default));
+  transition: background-color 0.2s ease-out;
+}
+
+::selection {
+  background-color: rgba(16, 185, 129, 0.35);
+}
+
+/* Slim, unobtrusive scrollbars to match the dev-tool aesthetic */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--slate-600)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: rgb(var(--slate-600));
+  border-radius: 9999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(var(--slate-500));
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sql-block {
+  font-family: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Gradient text for standout headings/wordmarks — used sparingly, not on body copy */
+.text-gradient {
+  background: linear-gradient(135deg, #6EE7B7 0%, #10B981 45%, #34D399 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Ambient background blobs — slow-drifting, low-opacity radial glows behind hero/auth
+   surfaces. Purely decorative depth, never placed behind text or interactive controls. */
+.ambient-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(80px);
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* Frosted glass treatment for the topbar / floating chrome */
+.glass-panel {
+  background-color: rgb(var(--surface-default) / 0.72);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+
+/* Skeleton loading rows — replaces bare spinners for table/list content so the layout
+   doesn't jump when real data arrives (reserves the same space from the first paint). */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: rgb(var(--surface-overlay));
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--shimmer-highlight), transparent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton::after {
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+  @keyframes shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+}
+
+/* Restrained motion system: content settles in on mount, modals ease in with a slight
+   overshoot for a more premium feel, exits are always faster than entrances.
+   No motion is applied to anything the person is actively typing into. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .animate-fade-in-up {
+    animation: fade-in-up 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  .animate-fade-in {
+    animation: fade-in 0.2s ease-out;
+  }
+
+  @keyframes overlay-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes panel-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96) translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+  .animate-overlay-in {
+    animation: overlay-in 0.18s ease-out;
+  }
+  .animate-panel-in {
+    animation: panel-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes stagger-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .animate-stagger-in {
+    animation: stagger-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes blob-float {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(3%, -4%) scale(1.05); }
+    66% { transform: translate(-3%, 3%) scale(0.97); }
+  }
+  .animate-blob-float {
+    animation: blob-float 18s ease-in-out infinite;
+  }
+
+  @keyframes pulse-ring {
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+    100% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+  }
+  .animate-pulse-ring {
+    animation: pulse-ring 1.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  }
+
+  @keyframes spin-smooth {
+    to { transform: rotate(360deg); }
+  }
+  .animate-spin-smooth {
+    animation: spin-smooth 0.7s linear infinite;
+  }
+}
+
+/* Stagger helper — pair with .animate-stagger-in; sets each child's delay via inline
+   style="--stagger-index: N" from the component, keeping the CSS itself index-free. */
+.stagger-item {
+  animation-delay: calc(var(--stagger-index, 0) * 40ms);
+}
+
+/* ---- Advanced motion & surfaces ---------------------------------------------------- */
+@property --angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+
+/* Hairline that glows around a card: a conic gradient masked down to a 1px border. */
+.gradient-border { position: relative; }
+.gradient-border::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
+  background: conic-gradient(from var(--angle), transparent 0%, rgb(16 185 129 / 0.7) 10%, transparent 26%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Children of .stagger-children reveal one after another (first 12; the rest appear together). */
+  .stagger-children > * { animation: stagger-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .stagger-children > :nth-child(2) { animation-delay: 45ms; }
+  .stagger-children > :nth-child(3) { animation-delay: 90ms; }
+  .stagger-children > :nth-child(4) { animation-delay: 135ms; }
+  .stagger-children > :nth-child(5) { animation-delay: 180ms; }
+  .stagger-children > :nth-child(6) { animation-delay: 225ms; }
+  .stagger-children > :nth-child(7) { animation-delay: 270ms; }
+  .stagger-children > :nth-child(8) { animation-delay: 315ms; }
+  .stagger-children > :nth-child(9) { animation-delay: 360ms; }
+  .stagger-children > :nth-child(10) { animation-delay: 405ms; }
+  .stagger-children > :nth-child(11) { animation-delay: 450ms; }
+  .stagger-children > :nth-child(12) { animation-delay: 495ms; }
+
+  @keyframes spin-angle { to { --angle: 360deg; } }
+  .gradient-border::before { animation: spin-angle 7s linear infinite; }
+
+  @keyframes shake {
+    10%, 90% { transform: translateX(-1px); } 20%, 80% { transform: translateX(2px); }
+    30%, 50%, 70% { transform: translateX(-4px); } 40%, 60% { transform: translateX(4px); }
+  }
+  .animate-shake { animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97); }
+
+  @keyframes caret-blink { 50% { opacity: 0; } }
+  .animate-caret { animation: caret-blink 1s step-end infinite; }
+
+  @keyframes float-y { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+  .animate-float { animation: float-y 5s ease-in-out infinite; }
+}
