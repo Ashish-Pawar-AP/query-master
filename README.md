@@ -1,4 +1,9 @@
-# Query Master
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./docs/logo-horizontal-dark.png">
+    <img src="./docs/logo-horizontal-light.png" alt="Query Master" width="360">
+  </picture>
+</p>
 
 An internal web application that centralises reusable **SQL query templates** for support teams. Admins define a template once; support engineers fill in a form and get a correct, safely escaped SQL query to copy, instead of hand-editing SQL every time.
 
