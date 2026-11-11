@@ -43,7 +43,7 @@ export const listSubModules = asyncHandler(async (req, res) => {
       .select("-sqlTemplate")
       .populate("category", "name")
       .populate("module", "name")
-      .sort({ updatedAt: -1 })
+      .sort({ updatedAt: -1, _id: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
       .lean(),
