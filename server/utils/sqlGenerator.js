@@ -33,7 +33,7 @@ function renderValue(rawValue, dataType, label = "value") {
       return text.replace(/^\+/, "");
     }
     case "BOOLEAN":
-      return String(rawValue).toLowerCase() === "true" || rawValue === true ? "1" : "0";
+      return String(rawValue).toLowerCase() === "true" || rawValue === true ? "true" : "false";
     case "NULL":
       return "NULL";
     case "JSON":

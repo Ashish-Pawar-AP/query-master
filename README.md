@@ -277,7 +277,7 @@ A query is built from up to three ingredients. Full reference: [`docs/QUERY_TEMP
 | -------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------- |
 | `STRING`, `DATE`, `DATETIME`, `CUSTOM` | Text box                           | `'value'` (quotes escaped)                                                |
 | `INTEGER`, `DECIMAL`                   | Text box, validated                | Unquoted number; anything else is rejected with an error naming the field |
-| `BOOLEAN`                              | True/False dropdown                | `1` or `0`                                                                |
+| `BOOLEAN`                              | True/False dropdown                | `true` or `false`                                                                |
 | `ARRAY`                                | Dropdown of the options you define | `'option'`                                                                |
 | `JSON`                                 | Text box                           | Quoted JSON text                                                          |
 | `NULL`                                 | Nothing to fill                    | `NULL`                                                                    |
