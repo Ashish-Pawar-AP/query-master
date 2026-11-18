@@ -1,7 +1,19 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Copy, Check, Pencil, Trash2, ArrowLeft, Sparkles, SlidersHorizontal, ListChecks, Filter, Terminal, Info } from "lucide-react";
+import {
+  Copy,
+  Check,
+  Pencil,
+  Trash2,
+  ArrowLeft,
+  Sparkles,
+  SlidersHorizontal,
+  ListChecks,
+  Filter,
+  Terminal,
+  Info,
+} from "lucide-react";
 import toast from "react-hot-toast";
 import { subModuleApi } from "./subModuleApi.js";
 import { favoriteApi } from "../favorites/favoriteApi.js";
@@ -21,15 +33,26 @@ import { formatDateTime } from "../../lib/format.js";
 
 // A field the admin marked "multiple" takes a list of values (-> IN (...)); BOOLEAN/NULL/JSON
 // can't, whatever the flag says.
-const isMulti = (field) => Boolean(field.multiple) && canBeMultiple(field.dataType);
+const isMulti = (field) =>
+  Boolean(field.multiple) && canBeMultiple(field.dataType);
 
 // Renders the right input control for a field's data type:
 //   multiple + ARRAY -> toggle pills, pick any number of the admin-defined options
 //   multiple         -> chip input, type/paste any number of values
 //   BOOLEAN          -> fixed True/False dropdown
 //   ARRAY            -> dropdown of the admin-defined options (single choice)
+//   JSON + options   -> same dropdown showing the labels (the SQL gets each label's code)
 //   other            -> free text
-function ValueControl({ dataType, options, value, onChange, disabled, placeholder, multiple, ariaLabel }) {
+function ValueControl({
+  dataType,
+  options,
+  value,
+  onChange,
+  disabled,
+  placeholder,
+  multiple,
+  ariaLabel,
+}) {
   const base =
     "w-full rounded-md border border-surface-border bg-surface px-2.5 py-1.5 text-sm text-slate-100 transition-[border-color,box-shadow] duration-150 focus:outline-hidden focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500/50 disabled:opacity-40";
 
@@ -38,28 +61,51 @@ function ValueControl({ dataType, options, value, onChange, disabled, placeholde
     return (
       <div className="min-w-0 flex-1">
         {dataType === "ARRAY" ? (
-          <OptionPills options={options} values={list} onChange={onChange} disabled={disabled} ariaLabel={ariaLabel} />
+          <OptionPills
+            options={options}
+            values={list}
+            onChange={onChange}
+            disabled={disabled}
+            ariaLabel={ariaLabel}
+          />
         ) : (
-          <MultiValueInput values={list} onChange={onChange} disabled={disabled} ariaLabel={ariaLabel} />
+          <MultiValueInput
+            values={list}
+            onChange={onChange}
+            disabled={disabled}
+            ariaLabel={ariaLabel}
+          />
         )}
       </div>
     );
   }
   if (dataType === "BOOLEAN") {
     return (
-      <select disabled={disabled} value={value ?? ""} onChange={(e) => onChange(e.target.value)} className={base}>
+      <select
+        disabled={disabled}
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        className={base}
+      >
         <option value="">Select…</option>
         <option value="true">True</option>
         <option value="false">False</option>
       </select>
     );
   }
-  if (dataType === "ARRAY") {
+  if (dataType === "ARRAY" || (dataType === "JSON" && options?.length > 0)) {
     return (
-      <select disabled={disabled} value={value ?? ""} onChange={(e) => onChange(e.target.value)} className={base}>
+      <select
+        disabled={disabled}
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        className={base}
+      >
         <option value="">Select…</option>
         {(options || []).map((opt) => (
-          <option key={opt} value={opt}>{opt}</option>
+          <option key={opt} value={opt}>
+            {opt}
+          </option>
         ))}
       </select>
     );
@@ -83,7 +129,9 @@ function SectionCard({ icon: Icon, title, hint, children }) {
           <Icon size={13} />
         </span>
         <h3 className="text-sm font-semibold text-slate-200">{title}</h3>
-        {hint && <span className="text-xs font-normal text-slate-500">{hint}</span>}
+        {hint && (
+          <span className="text-xs font-normal text-slate-500">{hint}</span>
+        )}
       </div>
       {children}
     </section>
@@ -113,18 +161,39 @@ export default function SubModuleDetail() {
 
   useEffect(() => {
     if (subModule) {
-      setSelectedUpdateFields(subModule.updatableFields.filter((f) => f.defaultChecked).map((f) => f.fieldName));
-      setSelectedWhereFields(subModule.whereFields.filter((f) => f.defaultChecked).map((f) => f.fieldName));
+      setSelectedUpdateFields(
+        subModule.updatableFields
+          .filter((f) => f.defaultChecked)
+          .map((f) => f.fieldName),
+      );
+      setSelectedWhereFields(
+        subModule.whereFields
+          .filter((f) => f.defaultChecked)
+          .map((f) => f.fieldName),
+      );
       // Defaults are stored as text; a multiple field's default "A, B" becomes the list [A, B].
-      const initial = (field) => (isMulti(field) ? parseValues(field.defaultValue) : field.defaultValue);
+      const initial = (field) =>
+        isMulti(field) ? parseValues(field.defaultValue) : field.defaultValue;
       setPlaceholderValues(
-        Object.fromEntries(subModule.placeholders.filter((p) => p.defaultValue).map((p) => [p.name, initial(p)]))
+        Object.fromEntries(
+          subModule.placeholders
+            .filter((p) => p.defaultValue)
+            .map((p) => [p.name, initial(p)]),
+        ),
       );
       setUpdateFieldValues(
-        Object.fromEntries(subModule.updatableFields.filter((f) => f.defaultValue).map((f) => [f.fieldName, f.defaultValue]))
+        Object.fromEntries(
+          subModule.updatableFields
+            .filter((f) => f.defaultValue)
+            .map((f) => [f.fieldName, f.defaultValue]),
+        ),
       );
       setWhereFieldValues(
-        Object.fromEntries(subModule.whereFields.filter((f) => f.defaultValue).map((f) => [f.fieldName, initial(f)]))
+        Object.fromEntries(
+          subModule.whereFields
+            .filter((f) => f.defaultValue)
+            .map((f) => [f.fieldName, initial(f)]),
+        ),
       );
     }
   }, [subModule]);
@@ -140,7 +209,8 @@ export default function SubModuleDetail() {
   const generateMutation = useMutation({
     mutationFn: () => subModuleApi.generate(id, buildPayload()),
     onSuccess: (res) => setGeneratedSql(res.data.data.sql),
-    onError: (err) => toast.error(err.response?.data?.message || "Couldn't generate SQL"),
+    onError: (err) =>
+      toast.error(err.response?.data?.message || "Couldn't generate SQL"),
   });
 
   const copyMutation = useMutation({
@@ -152,7 +222,8 @@ export default function SubModuleDetail() {
       setJustCopied(true);
       setTimeout(() => setJustCopied(false), 1800);
     },
-    onError: (err) => toast.error(err.response?.data?.message || "Couldn't copy query"),
+    onError: (err) =>
+      toast.error(err.response?.data?.message || "Couldn't copy query"),
   });
 
   const deleteMutation = useMutation({
@@ -161,11 +232,13 @@ export default function SubModuleDetail() {
       toast.success("Query deleted");
       navigate("/submodules");
     },
-    onError: (err) => toast.error(err.response?.data?.message || "Failed to delete query"),
+    onError: (err) =>
+      toast.error(err.response?.data?.message || "Failed to delete query"),
   });
 
   const favoriteMutation = useMutation({
-    mutationFn: () => (subModule.isFavorite ? favoriteApi.remove(id) : favoriteApi.add(id)),
+    mutationFn: () =>
+      subModule.isFavorite ? favoriteApi.remove(id) : favoriteApi.add(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["submodule", id] });
       queryClient.invalidateQueries({ queryKey: ["favorites"] });
@@ -177,7 +250,10 @@ export default function SubModuleDetail() {
 
   return (
     <div className="animate-fade-in-up">
-      <button onClick={() => navigate(-1)} className="mb-4 flex items-center gap-1.5 text-xs text-slate-500 transition-colors hover:text-slate-300">
+      <button
+        onClick={() => navigate(-1)}
+        className="mb-4 flex items-center gap-1.5 text-xs text-slate-500 transition-colors hover:text-slate-300"
+      >
         <ArrowLeft size={13} /> Back
       </button>
 
@@ -193,8 +269,20 @@ export default function SubModuleDetail() {
             />
             {isAdmin && (
               <>
-                <Button variant="secondary" icon={Pencil} onClick={() => navigate(`/submodules/${id}/edit`)}>Edit</Button>
-                <Button variant="danger" icon={Trash2} onClick={() => setDeleteOpen(true)}>Delete</Button>
+                <Button
+                  variant="secondary"
+                  icon={Pencil}
+                  onClick={() => navigate(`/submodules/${id}/edit`)}
+                >
+                  Edit
+                </Button>
+                <Button
+                  variant="danger"
+                  icon={Trash2}
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  Delete
+                </Button>
               </>
             )}
           </>
@@ -205,7 +293,11 @@ export default function SubModuleDetail() {
         <Badge tone="accent">{subModule.queryType}</Badge>
         <Badge>{subModule.category?.name}</Badge>
         <Badge>{subModule.module?.name}</Badge>
-        {subModule.tags?.map((t) => <Badge key={t} tone="neutral">#{t}</Badge>)}
+        {subModule.tags?.map((t) => (
+          <Badge key={t} tone="neutral">
+            #{t}
+          </Badge>
+        ))}
         <Badge tone="success">v{subModule.version}</Badge>
       </div>
 
@@ -220,17 +312,29 @@ export default function SubModuleDetail() {
                   // button when the label text is clicked — so list fields use a <div>.
                   const Wrapper = multiple ? "div" : "label";
                   return (
-                    <Wrapper key={ph.name} className={`flex flex-col gap-1.5 ${multiple ? "sm:col-span-2" : ""}`}>
+                    <Wrapper
+                      key={ph.name}
+                      className={`flex flex-col gap-1.5 ${multiple ? "sm:col-span-2" : ""}`}
+                    >
                       <span className="text-xs font-medium text-slate-400">
                         {ph.label}
                         {ph.required ? " *" : ""}
-                        {multiple && <span className="ml-1.5 font-normal text-slate-600">(one or more values)</span>}
+                        {multiple && (
+                          <span className="ml-1.5 font-normal text-slate-600">
+                            (one or more values)
+                          </span>
+                        )}
                       </span>
                       <ValueControl
                         dataType={ph.dataType}
                         options={ph.options}
                         value={placeholderValues[ph.name]}
-                        onChange={(v) => setPlaceholderValues((vals) => ({ ...vals, [ph.name]: v }))}
+                        onChange={(v) =>
+                          setPlaceholderValues((vals) => ({
+                            ...vals,
+                            [ph.name]: v,
+                          }))
+                        }
                         placeholder={ph.dataType}
                         multiple={multiple}
                         ariaLabel={ph.label}
@@ -243,7 +347,14 @@ export default function SubModuleDetail() {
           )}
 
           {subModule.updatableFields?.length > 0 && (
-            <SectionCard icon={ListChecks} title={subModule.queryType === "INSERT" ? "Fields to Insert" : "Fields to Update"}>
+            <SectionCard
+              icon={ListChecks}
+              title={
+                subModule.queryType === "INSERT"
+                  ? "Fields to Insert"
+                  : "Fields to Update"
+              }
+            >
               <div className="space-y-2">
                 {subModule.updatableFields.map((f) => {
                   const checked = selectedUpdateFields.includes(f.fieldName);
@@ -258,7 +369,9 @@ export default function SubModuleDetail() {
                           checked={checked}
                           onChange={(e) =>
                             setSelectedUpdateFields((sel) =>
-                              e.target.checked ? [...sel, f.fieldName] : sel.filter((n) => n !== f.fieldName)
+                              e.target.checked
+                                ? [...sel, f.fieldName]
+                                : sel.filter((n) => n !== f.fieldName),
                             )
                           }
                           className="h-3.5 w-3.5 accent-primary-500"
@@ -269,7 +382,12 @@ export default function SubModuleDetail() {
                         dataType={f.dataType}
                         options={f.options}
                         value={updateFieldValues[f.fieldName]}
-                        onChange={(v) => setUpdateFieldValues((vals) => ({ ...vals, [f.fieldName]: v }))}
+                        onChange={(v) =>
+                          setUpdateFieldValues((vals) => ({
+                            ...vals,
+                            [f.fieldName]: v,
+                          }))
+                        }
                         disabled={!checked}
                         placeholder={f.dataType}
                       />
@@ -281,7 +399,11 @@ export default function SubModuleDetail() {
           )}
 
           {subModule.whereFields?.length > 0 && (
-            <SectionCard icon={Filter} title="WHERE Conditions" hint={`(${subModule.whereLogic})`}>
+            <SectionCard
+              icon={Filter}
+              title="WHERE Conditions"
+              hint={`(${subModule.whereLogic})`}
+            >
               <div className="space-y-2">
                 {subModule.whereFields.map((f) => {
                   const checked = selectedWhereFields.includes(f.fieldName);
@@ -291,20 +413,27 @@ export default function SubModuleDetail() {
                       key={f.fieldName}
                       className={`flex gap-3 rounded-md p-1.5 transition-colors duration-150 ${multiple ? "items-start" : "items-center"} ${checked ? "bg-primary-500/[0.04]" : ""}`}
                     >
-                      <label className={`flex w-40 shrink-0 items-center gap-2 text-sm text-slate-300 ${multiple ? "pt-1.5" : ""}`}>
+                      <label
+                        className={`flex w-40 shrink-0 items-center gap-2 text-sm text-slate-300 ${multiple ? "pt-1.5" : ""}`}
+                      >
                         <input
                           type="checkbox"
                           checked={checked}
                           onChange={(e) =>
                             setSelectedWhereFields((sel) =>
-                              e.target.checked ? [...sel, f.fieldName] : sel.filter((n) => n !== f.fieldName)
+                              e.target.checked
+                                ? [...sel, f.fieldName]
+                                : sel.filter((n) => n !== f.fieldName),
                             )
                           }
                           className="h-3.5 w-3.5 accent-primary-500"
                         />
                         {f.fieldName}
                         {multiple && (
-                          <span title="Accepts several values — generates IN (…)" className="rounded bg-surface-overlay px-1 text-[10px] font-semibold text-slate-400">
+                          <span
+                            title="Accepts several values — generates IN (…)"
+                            className="rounded bg-surface-overlay px-1 text-[10px] font-semibold text-slate-400"
+                          >
                             IN
                           </span>
                         )}
@@ -313,7 +442,12 @@ export default function SubModuleDetail() {
                         dataType={f.dataType}
                         options={f.options}
                         value={whereFieldValues[f.fieldName]}
-                        onChange={(v) => setWhereFieldValues((vals) => ({ ...vals, [f.fieldName]: v }))}
+                        onChange={(v) =>
+                          setWhereFieldValues((vals) => ({
+                            ...vals,
+                            [f.fieldName]: v,
+                          }))
+                        }
                         disabled={!checked}
                         placeholder={f.dataType}
                         multiple={multiple}
@@ -327,7 +461,12 @@ export default function SubModuleDetail() {
           )}
 
           <div className="flex gap-2">
-            <Button variant="secondary" icon={Sparkles} onClick={() => generateMutation.mutate()} loading={generateMutation.isPending}>
+            <Button
+              variant="secondary"
+              icon={Sparkles}
+              onClick={() => generateMutation.mutate()}
+              loading={generateMutation.isPending}
+            >
               Generate SQL
             </Button>
             <Button
@@ -345,7 +484,9 @@ export default function SubModuleDetail() {
           <section className="overflow-hidden rounded-xl border border-surface-border bg-surface-raised shadow-elevated">
             <div className="flex items-center gap-2 border-b border-surface-border-soft bg-surface-overlay/50 px-4 py-2.5">
               <Terminal size={13} className="text-slate-500" />
-              <h3 className="text-sm font-semibold text-slate-200">Generated SQL</h3>
+              <h3 className="text-sm font-semibold text-slate-200">
+                Generated SQL
+              </h3>
               <span className="ml-auto flex gap-1" aria-hidden="true">
                 <span className="h-2.5 w-2.5 rounded-full bg-red-500/40" />
                 <span className="h-2.5 w-2.5 rounded-full bg-amber-500/40" />
@@ -360,8 +501,16 @@ export default function SubModuleDetail() {
           <section className="flex items-start gap-2 rounded-xl border border-surface-border bg-surface-raised p-4 text-xs text-slate-500">
             <Info size={14} className="mt-0.5 shrink-0 text-slate-600" />
             <dl className="w-full space-y-1.5">
-              <div className="flex justify-between"><dt>Version</dt><dd className="text-slate-300">v{subModule.version}</dd></div>
-              <div className="flex justify-between"><dt>Last updated</dt><dd className="text-slate-300">{formatDateTime(subModule.updatedAt)}</dd></div>
+              <div className="flex justify-between">
+                <dt>Version</dt>
+                <dd className="text-slate-300">v{subModule.version}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt>Last updated</dt>
+                <dd className="text-slate-300">
+                  {formatDateTime(subModule.updatedAt)}
+                </dd>
+              </div>
             </dl>
           </section>
         </div>

@@ -8,6 +8,11 @@ import { categoryApi } from "../categories/categoryApi.js";
 import { moduleApi } from "../modules/moduleApi.js";
 import { QUERY_TYPES, DATA_TYPES } from "../../lib/roles.js";
 import { canBeMultiple, parseValues } from "../../lib/multiValue.js";
+import {
+  parseOptionsInput,
+  optionsToText,
+  serialiseOptions,
+} from "../../lib/optionList.js";
 import PageHeader from "../../components/common/PageHeader.jsx";
 import Button from "../../components/common/Button.jsx";
 import Input from "../../components/common/Input.jsx";
@@ -38,7 +43,17 @@ const EMPTY_FORM = {
 // comma-separated default down to a single value so it never holds an invalid default.
 function patchRow(row, key, value) {
   const next = { ...row, [key]: value };
-  const stopsBeingMultiple = (key === "multiple" && !value) || (key === "dataType" && !canBeMultiple(value));
+  if (
+    key === "dataType" &&
+    value !== row.dataType &&
+    (value === "JSON" || row.dataType === "JSON")
+  ) {
+    next.options = ""; // a comma list and a JSON mapping are not interchangeable
+    next.defaultValue = "";
+  }
+  const stopsBeingMultiple =
+    (key === "multiple" && !value) ||
+    (key === "dataType" && !canBeMultiple(value));
   if (stopsBeingMultiple && row.multiple) {
     next.multiple = false;
     next.defaultValue = parseValues(row.defaultValue)[0] ?? "";
@@ -50,8 +65,16 @@ function patchRow(row, key, value) {
 function MultipleToggle({ row, onChange, label, hint }) {
   if (!canBeMultiple(row.dataType)) return null;
   return (
-    <label title={hint} className="flex items-center gap-1 text-xs text-slate-400">
-      <input type="checkbox" checked={!!row.multiple} onChange={(e) => onChange(e.target.checked)} className="accent-primary-500" />
+    <label
+      title={hint}
+      className="flex items-center gap-1 text-xs text-slate-400"
+    >
+      <input
+        type="checkbox"
+        checked={!!row.multiple}
+        onChange={(e) => onChange(e.target.checked)}
+        className="accent-primary-500"
+      />
       {label}
     </label>
   );
@@ -63,6 +86,7 @@ function MultipleToggle({ row, onChange, label, hint }) {
 //   multiple -> comma-separated list of default values
 //   BOOLEAN -> fixed True/False dropdown
 //   ARRAY   -> dropdown built live from the options the admin just typed
+//   JSON    -> same dropdown, built from the labels of the pasted mapping (free text if none)
 //   other   -> free text
 function SmartDefaultControl({ row, onChange }) {
   if (row.multiple) {
@@ -88,11 +112,11 @@ function SmartDefaultControl({ row, onChange }) {
       </select>
     );
   }
-  if (row.dataType === "ARRAY") {
-    const opts = (row.options || "")
-      .split(",")
-      .map((o) => o.trim())
-      .filter(Boolean);
+  const { labels: opts } = parseOptionsInput(row.options, row.dataType);
+  if (
+    row.dataType === "ARRAY" ||
+    (row.dataType === "JSON" && opts.length > 0)
+  ) {
     return (
       <select
         value={row.defaultValue}
@@ -101,7 +125,9 @@ function SmartDefaultControl({ row, onChange }) {
       >
         <option value="">No default</option>
         {opts.map((opt) => (
-          <option key={opt} value={opt}>{opt}</option>
+          <option key={opt} value={opt}>
+            {opt}
+          </option>
         ))}
       </select>
     );
@@ -116,11 +142,69 @@ function SmartDefaultControl({ row, onChange }) {
   );
 }
 
-function RowEditor({ title, hint, rows, setRows, includeOptions = true, allowMultiple = false }) {
+// The "Options" box. ARRAY: a plain comma list. JSON: pasted JSON that maps label -> SQL code.
+function OptionsInput({ value, onChange, dataType }) {
+  const inputClass =
+    "min-w-[220px] flex-1 rounded-md border border-primary-500/30 bg-surface-raised px-2 py-1 text-xs text-slate-100 placeholder:text-slate-600";
+
+  if (dataType !== "JSON") {
+    return (
+      <input
+        placeholder="Options, comma separated (e.g. Active, Inactive, Pending)"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={inputClass}
+      />
+    );
+  }
+
+  const parsed = parseOptionsInput(value, "JSON");
+  const rows = Math.min(Math.max(parsed.labels.length, 3) + 1, 10);
+  return (
+    <>
+      <textarea
+        rows={value.trim() ? rows : 2}
+        spellCheck={false}
+        placeholder={
+          'Optional: JSON that maps label to code, e.g. {"Self": "SE", "Spouse": "SP"}. Users see the label, the SQL gets the code. Leave empty for plain JSON text.'
+        }
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`${inputClass} resize-y font-mono`}
+      />
+      {parsed.error && (
+        <p className="basis-full text-xs text-red-400">{parsed.error}</p>
+      )}
+      {parsed.pairs && (
+        <p className="basis-full text-xs text-primary-text">
+          {parsed.pairs.length} options. Users see the label; the SQL gets the
+          code, e.g. {parsed.pairs[0].label} becomes '{parsed.pairs[0].value}'.
+        </p>
+      )}
+    </>
+  );
+}
+
+function RowEditor({
+  title,
+  hint,
+  rows,
+  setRows,
+  includeOptions = true,
+  allowMultiple = false,
+}) {
   function addRow() {
     setRows([
       ...rows,
-      { fieldName: "", columnName: "", dataType: "STRING", defaultChecked: false, options: "", defaultValue: "", multiple: false },
+      {
+        fieldName: "",
+        columnName: "",
+        dataType: "STRING",
+        defaultChecked: false,
+        options: "",
+        defaultValue: "",
+        multiple: false,
+      },
     ]);
   }
   function updateRow(idx, key, value) {
@@ -137,14 +221,25 @@ function RowEditor({ title, hint, rows, setRows, includeOptions = true, allowMul
           <h3 className="text-sm font-semibold text-slate-200">{title}</h3>
           {hint && <p className="text-xs text-slate-500">{hint}</p>}
         </div>
-        <Button type="button" variant="ghost" size="sm" icon={Plus} onClick={addRow}>Add row</Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          icon={Plus}
+          onClick={addRow}
+        >
+          Add row
+        </Button>
       </div>
       {rows.length === 0 ? (
         <p className="text-xs text-slate-600">None added yet.</p>
       ) : (
         <div className="space-y-2">
           {rows.map((row, idx) => (
-            <div key={idx} className="animate-fade-in-up flex flex-wrap items-center gap-2 rounded-md border border-surface-border bg-surface p-2">
+            <div
+              key={idx}
+              className="animate-fade-in-up flex flex-wrap items-center gap-2 rounded-md border border-surface-border bg-surface p-2"
+            >
               <input
                 placeholder="Field label (e.g. Name)"
                 value={row.fieldName}
@@ -162,17 +257,21 @@ function RowEditor({ title, hint, rows, setRows, includeOptions = true, allowMul
                 onChange={(e) => updateRow(idx, "dataType", e.target.value)}
                 className="rounded-md border border-surface-border bg-surface-raised px-2 py-1 text-xs text-slate-100"
               >
-                {DATA_TYPES.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                {DATA_TYPES.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
               </select>
 
-              {includeOptions && row.dataType === "ARRAY" && (
-                <input
-                  placeholder="Options, comma separated (e.g. Active, Inactive, Pending)"
-                  value={row.options}
-                  onChange={(e) => updateRow(idx, "options", e.target.value)}
-                  className="min-w-[220px] flex-1 rounded-md border border-primary-500/30 bg-surface-raised px-2 py-1 text-xs text-slate-100 placeholder:text-slate-600"
-                />
-              )}
+              {includeOptions &&
+                (row.dataType === "ARRAY" || row.dataType === "JSON") && (
+                  <OptionsInput
+                    dataType={row.dataType}
+                    value={row.options}
+                    onChange={(v) => updateRow(idx, "options", v)}
+                  />
+                )}
 
               {allowMultiple && (
                 <MultipleToggle
@@ -183,19 +282,28 @@ function RowEditor({ title, hint, rows, setRows, includeOptions = true, allowMul
                 />
               )}
 
-              <SmartDefaultControl row={row} onChange={(v) => updateRow(idx, "defaultValue", v)} />
+              <SmartDefaultControl
+                row={row}
+                onChange={(v) => updateRow(idx, "defaultValue", v)}
+              />
 
               <label className="flex items-center gap-1 text-xs text-slate-400">
                 <input
                   type="checkbox"
                   checked={!!row.defaultChecked}
-                  onChange={(e) => updateRow(idx, "defaultChecked", e.target.checked)}
+                  onChange={(e) =>
+                    updateRow(idx, "defaultChecked", e.target.checked)
+                  }
                   className="accent-primary-500"
                 />
                 Checked by default
               </label>
 
-              <button type="button" onClick={() => removeRow(idx)} className="ml-auto shrink-0 text-red-400 transition-colors hover:text-red-300">
+              <button
+                type="button"
+                onClick={() => removeRow(idx)}
+                className="ml-auto shrink-0 text-red-400 transition-colors hover:text-red-300"
+              >
                 <Trash2 size={14} />
               </button>
             </div>
@@ -209,7 +317,18 @@ function RowEditor({ title, hint, rows, setRows, includeOptions = true, allowMul
 // Placeholders don't have a column/checkbox — they're pure fill-in-the-blank {{tokens}}.
 function PlaceholderEditor({ rows, setRows }) {
   function addRow() {
-    setRows([...rows, { name: "", label: "", dataType: "STRING", required: true, options: "", defaultValue: "", multiple: false }]);
+    setRows([
+      ...rows,
+      {
+        name: "",
+        label: "",
+        dataType: "STRING",
+        required: true,
+        options: "",
+        defaultValue: "",
+        multiple: false,
+      },
+    ]);
   }
   function updateRow(idx, key, value) {
     setRows(rows.map((r, i) => (i === idx ? patchRow(r, key, value) : r)));
@@ -222,17 +341,32 @@ function PlaceholderEditor({ rows, setRows }) {
     <section className="rounded-lg border border-surface-border bg-surface-raised p-4">
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-slate-200">Variable Placeholders</h3>
-          <p className="text-xs text-slate-500">Fillable {"{{tokens}}"} referenced in the SQL template above.</p>
+          <h3 className="text-sm font-semibold text-slate-200">
+            Variable Placeholders
+          </h3>
+          <p className="text-xs text-slate-500">
+            Fillable {"{{tokens}}"} referenced in the SQL template above.
+          </p>
         </div>
-        <Button type="button" variant="ghost" size="sm" icon={Plus} onClick={addRow}>Add row</Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          icon={Plus}
+          onClick={addRow}
+        >
+          Add row
+        </Button>
       </div>
       {rows.length === 0 ? (
         <p className="text-xs text-slate-600">None added yet.</p>
       ) : (
         <div className="space-y-2">
           {rows.map((row, idx) => (
-            <div key={idx} className="animate-fade-in-up flex flex-wrap items-center gap-2 rounded-md border border-surface-border bg-surface p-2">
+            <div
+              key={idx}
+              className="animate-fade-in-up flex flex-wrap items-center gap-2 rounded-md border border-surface-border bg-surface p-2"
+            >
               <input
                 placeholder="Token name (EmployeeId)"
                 value={row.name}
@@ -250,15 +384,18 @@ function PlaceholderEditor({ rows, setRows }) {
                 onChange={(e) => updateRow(idx, "dataType", e.target.value)}
                 className="rounded-md border border-surface-border bg-surface-raised px-2 py-1 text-xs text-slate-100"
               >
-                {DATA_TYPES.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                {DATA_TYPES.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
               </select>
 
-              {row.dataType === "ARRAY" && (
-                <input
-                  placeholder="Options, comma separated"
+              {(row.dataType === "ARRAY" || row.dataType === "JSON") && (
+                <OptionsInput
+                  dataType={row.dataType}
                   value={row.options}
-                  onChange={(e) => updateRow(idx, "options", e.target.value)}
-                  className="min-w-[220px] flex-1 rounded-md border border-primary-500/30 bg-surface-raised px-2 py-1 text-xs text-slate-100 placeholder:text-slate-600"
+                  onChange={(v) => updateRow(idx, "options", v)}
                 />
               )}
 
@@ -269,7 +406,10 @@ function PlaceholderEditor({ rows, setRows }) {
                 hint="Fills the {{token}} with a comma-separated list — use it inside IN ( … ), e.g. WHERE id IN ({{Ids}})"
               />
 
-              <SmartDefaultControl row={row} onChange={(v) => updateRow(idx, "defaultValue", v)} />
+              <SmartDefaultControl
+                row={row}
+                onChange={(v) => updateRow(idx, "defaultValue", v)}
+              />
 
               <label className="flex items-center gap-1 text-xs text-slate-400">
                 <input
@@ -281,7 +421,11 @@ function PlaceholderEditor({ rows, setRows }) {
                 Required
               </label>
 
-              <button type="button" onClick={() => removeRow(idx)} className="ml-auto shrink-0 text-red-400 transition-colors hover:text-red-300">
+              <button
+                type="button"
+                onClick={() => removeRow(idx)}
+                className="ml-auto shrink-0 text-red-400 transition-colors hover:text-red-300"
+              >
                 <Trash2 size={14} />
               </button>
             </div>
@@ -304,7 +448,10 @@ export default function SubModuleForm() {
     enabled: isEdit,
   });
 
-  const { data: categories } = useQuery({ queryKey: ["categories"], queryFn: () => categoryApi.list().then((r) => r.data.data) });
+  const { data: categories } = useQuery({
+    queryKey: ["categories"],
+    queryFn: () => categoryApi.list().then((r) => r.data.data),
+  });
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [modules, setModules] = useState([]);
@@ -319,9 +466,18 @@ export default function SubModuleForm() {
         queryType: existing.queryType,
         tableName: existing.tableName || "",
         sqlTemplate: existing.sqlTemplate,
-        placeholders: (existing.placeholders || []).map((p) => ({ ...p, options: (p.options || []).join(", ") })),
-        updatableFields: (existing.updatableFields || []).map((f) => ({ ...f, options: (f.options || []).join(", ") })),
-        whereFields: (existing.whereFields || []).map((f) => ({ ...f, options: (f.options || []).join(", ") })),
+        placeholders: (existing.placeholders || []).map((p) => ({
+          ...p,
+          options: optionsToText(p),
+        })),
+        updatableFields: (existing.updatableFields || []).map((f) => ({
+          ...f,
+          options: optionsToText(f),
+        })),
+        whereFields: (existing.whereFields || []).map((f) => ({
+          ...f,
+          options: optionsToText(f),
+        })),
         whereLogic: existing.whereLogic || "AND",
         tags: (existing.tags || []).join(", "),
         status: existing.status || "ACTIVE",
@@ -332,7 +488,9 @@ export default function SubModuleForm() {
 
   useEffect(() => {
     if (form.category) {
-      moduleApi.list({ category: form.category }).then((r) => setModules(r.data.data));
+      moduleApi
+        .list({ category: form.category })
+        .then((r) => setModules(r.data.data));
     } else {
       setModules([]);
     }
@@ -340,15 +498,35 @@ export default function SubModuleForm() {
 
   const saveMutation = useMutation({
     mutationFn: () => {
-      const toArray = (v) => (typeof v === "string" ? v.split(",").map((s) => s.trim()).filter(Boolean) : v);
+      const toArray = (v) =>
+        typeof v === "string"
+          ? v
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : v;
+      // Splits each row's Options text into `options` (labels) and `optionPairs` (label -> value).
+      // A JSON mistake stops the save and names the row, instead of sending bad data.
+      const withOptions = (rows, nameKey) =>
+        rows.map((row) => {
+          try {
+            return { ...row, ...serialiseOptions(row) };
+          } catch (err) {
+            throw new Error(
+              `"${row[nameKey] || "Unnamed row"}": ${err.message}`,
+            );
+          }
+        });
       const payload = {
         ...form,
         tags: toArray(form.tags),
-        placeholders: form.placeholders.map((p) => ({ ...p, options: toArray(p.options) })),
-        updatableFields: form.updatableFields.map((f) => ({ ...f, options: toArray(f.options) })),
-        whereFields: form.whereFields.map((f) => ({ ...f, options: toArray(f.options) })),
+        placeholders: withOptions(form.placeholders, "name"),
+        updatableFields: withOptions(form.updatableFields, "fieldName"),
+        whereFields: withOptions(form.whereFields, "fieldName"),
       };
-      return isEdit ? subModuleApi.update(id, payload) : subModuleApi.create(payload);
+      return isEdit
+        ? subModuleApi.update(id, payload)
+        : subModuleApi.create(payload);
     },
     onSuccess: (res) => {
       toast.success(isEdit ? "Query updated" : "Query created");
@@ -356,7 +534,10 @@ export default function SubModuleForm() {
       queryClient.invalidateQueries({ queryKey: ["sidebar-tree"] });
       navigate(`/submodules/${res.data.data._id}`);
     },
-    onError: (err) => toast.error(err.response?.data?.message || "Failed to save query"),
+    onError: (err) =>
+      toast.error(
+        err.response?.data?.message || err.message || "Failed to save query",
+      ),
   });
 
   function handleSubmit(e) {
@@ -368,7 +549,10 @@ export default function SubModuleForm() {
 
   return (
     <div className="animate-fade-in-up">
-      <button onClick={() => navigate(-1)} className="mb-4 flex items-center gap-1.5 text-xs text-slate-500 transition-colors hover:text-slate-300">
+      <button
+        onClick={() => navigate(-1)}
+        className="mb-4 flex items-center gap-1.5 text-xs text-slate-500 transition-colors hover:text-slate-300"
+      >
         <ArrowLeft size={13} /> Back
       </button>
 
@@ -379,23 +563,84 @@ export default function SubModuleForm() {
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <section className="grid grid-cols-1 gap-4 rounded-lg border border-surface-border bg-surface-raised p-4 sm:grid-cols-2">
-          <Input label="Sub Module / Query Name" required value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Insert Employee" />
-          <Select label="Query Type" required value={form.queryType} onChange={(e) => setForm((f) => ({ ...f, queryType: e.target.value }))}>
-            {QUERY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          <Input
+            label="Sub Module / Query Name"
+            required
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            placeholder="e.g. Insert Employee"
+          />
+          <Select
+            label="Query Type"
+            required
+            value={form.queryType}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, queryType: e.target.value }))
+            }
+          >
+            {QUERY_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
           </Select>
 
-          <Select label="Category" required value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value, module: "" }))} disabled={isEdit}>
-            <option value="" disabled>Select a category</option>
-            {categories?.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+          <Select
+            label="Category"
+            required
+            value={form.category}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, category: e.target.value, module: "" }))
+            }
+            disabled={isEdit}
+          >
+            <option value="" disabled>
+              Select a category
+            </option>
+            {categories?.map((c) => (
+              <option key={c._id} value={c._id}>
+                {c.name}
+              </option>
+            ))}
           </Select>
-          <Select label="Module" required value={form.module} onChange={(e) => setForm((f) => ({ ...f, module: e.target.value }))} disabled={!form.category || isEdit}>
-            <option value="" disabled>Select a module</option>
-            {modules.map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}
+          <Select
+            label="Module"
+            required
+            value={form.module}
+            onChange={(e) => setForm((f) => ({ ...f, module: e.target.value }))}
+            disabled={!form.category || isEdit}
+          >
+            <option value="" disabled>
+              Select a module
+            </option>
+            {modules.map((m) => (
+              <option key={m._id} value={m._id}>
+                {m.name}
+              </option>
+            ))}
           </Select>
-          <Input label="Table Name" value={form.tableName} onChange={(e) => setForm((f) => ({ ...f, tableName: e.target.value }))} placeholder="e.g. Employee" />
-          <Input label="Tags (comma separated)" value={form.tags} onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))} placeholder="employee, insert, hr" />
+          <Input
+            label="Table Name"
+            value={form.tableName}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, tableName: e.target.value }))
+            }
+            placeholder="e.g. Employee"
+          />
+          <Input
+            label="Tags (comma separated)"
+            value={form.tags}
+            onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))}
+            placeholder="employee, insert, hr"
+          />
           {isEdit && (
-            <Select label="Status" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
+            <Select
+              label="Status"
+              value={form.status}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, status: e.target.value }))
+              }
+            >
               <option value="ACTIVE">Active</option>
               <option value="ARCHIVED">Archived</option>
             </Select>
@@ -410,7 +655,14 @@ export default function SubModuleForm() {
             />
           </div>
           <div className="sm:col-span-2">
-            <TextArea label="Description" rows={2} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+            <TextArea
+              label="Description"
+              rows={2}
+              value={form.description}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, description: e.target.value }))
+              }
+            />
           </div>
         </section>
 
@@ -420,21 +672,43 @@ export default function SubModuleForm() {
             required
             rows={7}
             value={form.sqlTemplate}
-            onChange={(e) => setForm((f) => ({ ...f, sqlTemplate: e.target.value }))}
-            placeholder={"UPDATE Employee\nSET\n{{SET_CLAUSE}}\nWHERE\n{{WHERE_CLAUSE}};"}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, sqlTemplate: e.target.value }))
+            }
+            placeholder={
+              "UPDATE Employee\nSET\n{{SET_CLAUSE}}\nWHERE\n{{WHERE_CLAUSE}};"
+            }
           />
           <p className="mt-2 text-xs text-slate-500">
-            Use <code className="text-primary-text">{"{{placeholderName}}"}</code> for fillable variables, and the reserved tokens{" "}
-            <code className="text-primary-text">{"{{SET_CLAUSE}}"}</code>, <code className="text-primary-text">{"{{WHERE_CLAUSE}}"}</code>,{" "}
-            <code className="text-primary-text">{"{{INSERT_COLUMNS}}"}</code> / <code className="text-primary-text">{"{{INSERT_VALUES}}"}</code> where dynamic
-            field selection should be injected. For a list inside <code className="text-primary-text">IN ( … )</code>, mark the placeholder (or a WHERE field) <em>Multiple values</em>. Full reference: <code className="text-primary-text">docs/QUERY_TEMPLATE_GUIDE.md</code>.
+            Use{" "}
+            <code className="text-primary-text">{"{{placeholderName}}"}</code>{" "}
+            for fillable variables, and the reserved tokens{" "}
+            <code className="text-primary-text">{"{{SET_CLAUSE}}"}</code>,{" "}
+            <code className="text-primary-text">{"{{WHERE_CLAUSE}}"}</code>,{" "}
+            <code className="text-primary-text">{"{{INSERT_COLUMNS}}"}</code> /{" "}
+            <code className="text-primary-text">{"{{INSERT_VALUES}}"}</code>{" "}
+            where dynamic field selection should be injected. For a list inside{" "}
+            <code className="text-primary-text">IN ( … )</code>, mark the
+            placeholder (or a WHERE field) <em>Multiple values</em>. Full
+            reference:{" "}
+            <code className="text-primary-text">
+              docs/QUERY_TEMPLATE_GUIDE.md
+            </code>
+            .
           </p>
         </section>
 
-        <PlaceholderEditor rows={form.placeholders} setRows={(rows) => setForm((f) => ({ ...f, placeholders: rows }))} />
+        <PlaceholderEditor
+          rows={form.placeholders}
+          setRows={(rows) => setForm((f) => ({ ...f, placeholders: rows }))}
+        />
 
         <RowEditor
-          title={form.queryType === "INSERT" ? "Insertable Fields" : "Updatable Fields"}
+          title={
+            form.queryType === "INSERT"
+              ? "Insertable Fields"
+              : "Updatable Fields"
+          }
           hint="Rendered as checkboxes on the generator screen — the user picks which ones apply."
           rows={form.updatableFields}
           setRows={(rows) => setForm((f) => ({ ...f, updatableFields: rows }))}
@@ -449,15 +723,29 @@ export default function SubModuleForm() {
         />
 
         <div className="max-w-xs">
-          <Select label="WHERE Logic" value={form.whereLogic} onChange={(e) => setForm((f) => ({ ...f, whereLogic: e.target.value }))}>
+          <Select
+            label="WHERE Logic"
+            value={form.whereLogic}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, whereLogic: e.target.value }))
+            }
+          >
             <option value="AND">AND</option>
             <option value="OR">OR</option>
           </Select>
         </div>
 
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={() => navigate(-1)}>Cancel</Button>
-          <Button type="submit" icon={Save} loading={saveMutation.isPending}>{isEdit ? "Save Changes" : "Create Query"}</Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => navigate(-1)}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" icon={Save} loading={saveMutation.isPending}>
+            {isEdit ? "Save Changes" : "Create Query"}
+          </Button>
         </div>
       </form>
     </div>

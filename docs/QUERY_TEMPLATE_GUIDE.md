@@ -3,7 +3,7 @@
 This is the reference for building a query inside Query Master. Read it once, then use it
 as a lookup while you're filling in the **Create Query** form.
 
-> **One rule to remember:** a Sub Module *is* a query. There's no separate "queries list"
+> **One rule to remember:** a Sub Module _is_ a query. There's no separate "queries list"
 > inside a sub module — when you create a sub module, you're creating its one query at the
 > same time, in the same form.
 
@@ -14,12 +14,12 @@ as a lookup while you're filling in the **Create Query** form.
 STORED_PROCEDURE, DDL and UTILITY were removed — Query Master only supports the four types
 support engineers actually reuse day to day:
 
-| Type | Use it for |
-|---|---|
-| **INSERT** | Adding a new row |
+| Type       | Use it for                                |
+| ---------- | ----------------------------------------- |
+| **INSERT** | Adding a new row                          |
 | **UPDATE** | Editing specific columns on existing rows |
-| **DELETE** | Removing rows |
-| **SELECT** | Reading/filtering rows |
+| **DELETE** | Removing rows                             |
+| **SELECT** | Reading/filtering rows                    |
 
 ---
 
@@ -36,6 +36,7 @@ placeholder. The user filling out the query sees a labeled input for it.
 ```
 SELECT * FROM Employee WHERE department_id = {{DepartmentId}};
 ```
+
 Placeholder row: name `DepartmentId`, label `Department`, type `INTEGER`, required ✅
 
 ### b) Updatable / Insertable Fields — a checklist of columns
@@ -59,14 +60,14 @@ also choose whether checked conditions combine with **AND** or **OR**.
 This is the part that trips people up, so here's exactly what each data type renders as
 on the generator screen, for **both** placeholders and column checklists:
 
-| Data type | What the user sees | What you (admin) configure |
-|---|---|---|
-| `STRING`, `DATE`, `DATETIME`, `CUSTOM` | A plain text box | Nothing extra |
-| `INTEGER`, `DECIMAL` | A plain text box. The value must be a real number — anything else (`abc`, `1; DROP …`) is rejected with an error naming the field | Nothing extra |
-| `JSON` | A plain text box | Nothing extra |
-| `NULL` | Nothing to fill — always renders `NULL` | Nothing extra |
-| **`BOOLEAN`** | A **True / False dropdown** — nothing else, automatically | Optionally set a default: True or False |
-| **`ARRAY`** | A **single-select dropdown** of your custom option list | You type the option list, comma-separated (e.g. `Active, Inactive, Pending`), and can pick which one is pre-selected |
+| Data type                              | What the user sees                                                                                                                | What you (admin) configure                                                                                           |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `STRING`, `DATE`, `DATETIME`, `CUSTOM` | A plain text box                                                                                                                  | Nothing extra                                                                                                        |
+| `INTEGER`, `DECIMAL`                   | A plain text box. The value must be a real number — anything else (`abc`, `1; DROP …`) is rejected with an error naming the field | Nothing extra                                                                                                        |
+| `JSON`                                 | A plain text box, or a dropdown if you paste a label-to-code mapping in Options                                                   | Optional JSON mapping, see "Showing one thing, inserting another"                                                    |
+| `NULL`                                 | Nothing to fill — always renders `NULL`                                                                                           | Nothing extra                                                                                                        |
+| **`BOOLEAN`**                          | A **True / False dropdown** — nothing else, automatically                                                                         | Optionally set a default: True or False                                                                              |
+| **`ARRAY`**                            | A **single-select dropdown** of your custom option list                                                                           | You type the option list, comma-separated (e.g. `Active, Inactive, Pending`), and can pick which one is pre-selected |
 
 ### Adding a Boolean column
 
@@ -78,7 +79,35 @@ on the generator screen, for **both** placeholders and column checklists:
 ```
 Field label: IsActive   Column: is_active   Type: BOOLEAN   Default: True
 ```
-Generates `is_active = 1` (True) or `is_active = 0` (False) depending on what the user picks.
+
+Generates `is_active = TRUE` or `is_active = FALSE` depending on what the user picks.
+
+### Showing one thing, inserting another (JSON type: label to code mapping)
+
+Sometimes the user should pick a readable word, but the database stores a short code.
+Set the field's data type to **JSON** and paste a JSON object into its **Options** box.
+The text on the **left** is what the user sees; the text on the **right** is what goes into the SQL.
+
+```json
+{
+  "Self": "SE",
+  "Spouse": "SP",
+  "Dependent Children": "DC",
+  "Guardian": "GD"
+}
+```
+
+- The user gets a dropdown showing _Self, Spouse, Dependent Children, Guardian_.
+- Picking _Spouse_ generates `relation_code = 'SP'`.
+- A line under the box confirms how many options were read, or shows the JSON error.
+- The **default** must be one of the labels (the left side), for example `Spouse`, not `SP`.
+- Works for placeholders, updatable/insertable fields and WHERE fields. It is a single choice (no _Multiple values_).
+- Codes are written as quoted text (`'SP'`). If a code is a number, such as `{"Active": 1}`, it becomes `'1'`.
+- The server looks the label up in the saved definition, so a user cannot send a code that is not on your list.
+- If you use number-like labels (`1`, `2`, `10`), use the array form so the order is kept:
+  `[{"label": "1", "value": "A"}, {"label": "10", "value": "B"}]`
+- **Leave Options empty** and the JSON type works as before: a text box whose content is written into the query as quoted JSON text.
+- **ARRAY is unchanged**: its Options box is still a plain comma-separated list (`Active, Inactive`), and the user sees and inserts the same words.
 
 ### Adding an Array column (a fixed list of choices, pick one)
 
@@ -92,6 +121,7 @@ Generates `is_active = 1` (True) or `is_active = 0` (False) depending on what th
 ```
 Field label: Department   Column: department   Type: ARRAY   Options: HR, Finance, IT
 ```
+
 Generates `department = 'HR'` (or whichever option the user picked) — quoted like any
 text value.
 
@@ -100,40 +130,41 @@ text value.
 Support work constantly needs "all of these IDs", not one. Tick **Multiple values** on a
 field and the user can enter any number of values instead of one. It works in two places:
 
-| Where | Checkbox label | What it generates |
-|---|---|---|
-| A **WHERE field** | *Multiple values (IN)* | `column IN ('a', 'b', 'c')` instead of `column = 'a'` |
-| A **placeholder** | *Multiple values* | `{{Token}}` becomes the whole list — `'a', 'b', 'c'` — so you write the `IN ( … )` yourself: `WHERE id IN ({{Ids}})` |
+| Where             | Checkbox label         | What it generates                                                                                                    |
+| ----------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| A **WHERE field** | _Multiple values (IN)_ | `column IN ('a', 'b', 'c')` instead of `column = 'a'`                                                                |
+| A **placeholder** | _Multiple values_      | `{{Token}}` becomes the whole list — `'a', 'b', 'c'` — so you write the `IN ( … )` yourself: `WHERE id IN ({{Ids}})` |
 
 What the user sees on the generator screen:
 
-| Data type (with *Multiple values* ticked) | Control |
-|---|---|
+| Data type (with _Multiple values_ ticked)                    | Control                                                                                                    |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
 | `STRING`, `INTEGER`, `DECIMAL`, `DATE`, `DATETIME`, `CUSTOM` | A **chip input** — type a value and press Enter (or a comma) to add it; the value becomes a removable chip |
-| `ARRAY` | **Toggle pills** of your option list — pick any number of them |
-| `BOOLEAN`, `NULL`, `JSON` | Not available — the checkbox is hidden (a list of these makes no sense) |
+| `ARRAY`                                                      | **Toggle pills** of your option list — pick any number of them                                             |
+| `BOOLEAN`, `NULL`, `JSON`                                    | Not available — the checkbox is hidden (a list of these makes no sense)                                    |
 
 Tips for users, worth telling them: you can **paste a whole column from Excel or Sheets**
 and every line becomes a chip (newlines, tabs, commas and semicolons all separate values).
 Duplicates are dropped, order is kept, **Backspace** on an empty box removes the last
 chip, and **Clear all** empties the list. Text typed but not yet added is kept when they
-click away, so it isn't lost when they press *Generate SQL*.
+click away, so it isn't lost when they press _Generate SQL_.
 
 **Worked example.** `SELECT * FROM Employee WHERE {{WHERE_CLAUSE}};` with two WHERE fields,
-both ticked *Multiple values (IN)*: `EmployeeId` (`STRING`) and `Level` (`INTEGER`).
+both ticked _Multiple values (IN)_: `EmployeeId` (`STRING`) and `Level` (`INTEGER`).
 Entering `E101, E102, E103` and `1, 2` generates:
 
 ```sql
 SELECT * FROM Employee WHERE employee_id IN ('E101', 'E102', 'E103') AND level IN (1, 2);
 ```
 
-**Defaults.** For a *Multiple values* field the default is typed as comma-separated text
+**Defaults.** For a _Multiple values_ field the default is typed as comma-separated text
 (`HR, IT`) and shows up as pre-filled chips.
 
 **Rules worth knowing**
+
 - A single value still generates `IN ('x')` — it's always an `IN` list once ticked.
-- A ticked WHERE condition with **no values** is refused with *"Add at least one value for
-  …"* — it never generates the invalid `IN ()`.
+- A ticked WHERE condition with **no values** is refused with _"Add at least one value for
+  …"_ — it never generates the invalid `IN ()`.
 - An **optional** multi-value placeholder left empty renders `NULL`, so
   `IN ({{Ids}})` stays valid SQL (it just matches nothing). A **required** one must be filled.
 - Numbers are checked per value: a stray header cell in a pasted column (`id`) is rejected
@@ -150,6 +181,7 @@ SELECT * FROM Employee WHERE employee_id IN ('E101', 'E102', 'E103') AND level I
 ## 4. Worked example: UPDATE with a Boolean and an Array field
 
 **SQL Template**
+
 ```sql
 UPDATE Employee
 SET
@@ -176,10 +208,11 @@ for the WHERE condition. They check Is Active and Department, leave Name uncheck
 `EMP1001` for Employee ID.
 
 **Generated SQL:**
+
 ```sql
 UPDATE Employee
 SET
-is_active = 1,
+is_active = TRUE,
 department = 'Finance'
 WHERE
 employee_id = 'EMP1001';
@@ -189,7 +222,7 @@ employee_id = 'EMP1001';
 
 ## 5. Step-by-step: creating a query
 
-1. **Admin Panel → Queries → Create Query** (Admins only — *Admin Panel* is in the sidebar).
+1. **Admin Panel → Queries → Create Query** (Admins only — _Admin Panel_ is in the sidebar).
 2. Fill in **Name** (this is both the sub module's name and the query's title),
    **Description**, **Category**, **Module**, **Query Type**, **Table Name**, **Tags**.
 3. Write the **SQL Template**. Leave blanks as `{{tokens}}`, and drop in the reserved
@@ -209,12 +242,14 @@ employee_id = 'EMP1001';
 ## 6. Quick formulas by query type
 
 **INSERT**
+
 ```sql
 INSERT INTO {table} ({{INSERT_COLUMNS}})
 VALUES ({{INSERT_VALUES}});
 ```
 
 **UPDATE**
+
 ```sql
 UPDATE {table}
 SET
@@ -224,6 +259,7 @@ WHERE
 ```
 
 **DELETE**
+
 ```sql
 DELETE FROM {table}
 WHERE
@@ -231,6 +267,7 @@ WHERE
 ```
 
 **SELECT** (fixed conditions via placeholders)
+
 ```sql
 SELECT {columns}
 FROM {table}
@@ -238,6 +275,7 @@ WHERE {column} = {{SomePlaceholder}};
 ```
 
 **SELECT** (checklist-driven conditions, same as UPDATE/DELETE)
+
 ```sql
 SELECT {columns}
 FROM {table}
@@ -245,7 +283,8 @@ WHERE
 {{WHERE_CLAUSE}};
 ```
 
-**SELECT** (a list of values via a placeholder marked *Multiple values*)
+**SELECT** (a list of values via a placeholder marked _Multiple values_)
+
 ```sql
 SELECT {columns}
 FROM {table}
@@ -259,12 +298,12 @@ WHERE {column} IN ({{Ids}});
 - **Don't** make a table name or column name itself a `{{placeholder}}` — every
   placeholder value gets escaped/quoted for safety, which breaks raw SQL identifiers.
   Keep column and table names as literal text in the template; only use placeholders for
-  *values*.
+  _values_.
 - **Don't** forget the reserved token that matches your field checklist — if you add
   Updatable Fields but the template has no `{{SET_CLAUSE}}`, nothing will be injected.
 - **Don't** re-use a placeholder/field name twice in the same query — the first match wins
   and the rest are ignored.
-- **Don't** put a *Multiple values* placeholder anywhere except inside `IN ( … )`. It renders
+- **Don't** put a _Multiple values_ placeholder anywhere except inside `IN ( … )`. It renders
   as `'a', 'b', 'c'`, so `WHERE id = {{Ids}}` would be invalid SQL as soon as two values are
   entered. For a plain `=` comparison keep the placeholder single-valued.
 
@@ -280,4 +319,3 @@ Users who can open that query then see a **Notes** panel under the generator whe
 edit, delete and **copy** notes (Ctrl+Enter saves, Escape cancels). Notes are **private to each
 user**, limited to 20 per query and 2,000 characters each. Switching notes off later hides the
 panel and stops new notes, but doesn't delete what people already wrote.
-

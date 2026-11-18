@@ -6,10 +6,12 @@ const SINGLE_VALUE_TYPES = new Set(["BOOLEAN", "NULL", "JSON"]);
 const INTEGER_RE = /^[+-]?\d+$/;
 const DECIMAL_RE = /^[+-]?(\d+(\.\d+)?|\.\d+)$/;
 
-const isMultiple = (field) => Boolean(field.multiple) && !SINGLE_VALUE_TYPES.has(field.dataType);
+const isMultiple = (field) =>
+  Boolean(field.multiple) && !SINGLE_VALUE_TYPES.has(field.dataType);
 const quote = (text) => `'${String(text).replace(/'/g, "''")}'`;
 const asArray = (value) => (Array.isArray(value) ? value : []);
-const asObject = (value) => (value && typeof value === "object" && !Array.isArray(value) ? value : {});
+const asObject = (value) =>
+  value && typeof value === "object" && !Array.isArray(value) ? value : {};
 
 // Renders ONE scalar value as a SQL literal for its declared data type. `label` is only
 // used to make validation errors say which field was wrong.
@@ -24,30 +26,60 @@ function renderValue(rawValue, dataType, label = "value") {
   switch (dataType) {
     case "INTEGER": {
       const text = String(rawValue).trim();
-      if (!INTEGER_RE.test(text)) throw new ApiError(400, `"${label}" must be a whole number — got "${text}"`);
+      if (!INTEGER_RE.test(text))
+        throw new ApiError(
+          400,
+          `"${label}" must be a whole number — got "${text}"`,
+        );
       return text.replace(/^\+/, "");
     }
     case "DECIMAL": {
       const text = String(rawValue).trim();
-      if (!DECIMAL_RE.test(text)) throw new ApiError(400, `"${label}" must be a number — got "${text}"`);
+      if (!DECIMAL_RE.test(text))
+        throw new ApiError(400, `"${label}" must be a number — got "${text}"`);
       return text.replace(/^\+/, "");
     }
     case "BOOLEAN":
-      return String(rawValue).toLowerCase() === "true" || rawValue === true ? "true" : "false";
+      return String(rawValue).toLowerCase() === "true" || rawValue === true
+        ? "TRUE"
+        : "FALSE";
     case "NULL":
       return "NULL";
     case "JSON":
-      return quote(typeof rawValue === "string" ? rawValue : JSON.stringify(rawValue));
+      return quote(
+        typeof rawValue === "string" ? rawValue : JSON.stringify(rawValue),
+      );
     default: // STRING, DATE, DATETIME, ARRAY (the chosen option), CUSTOM
       return quote(rawValue);
   }
 }
 
+// JSON fields can map what the user SEES (the label) to what goes into the SQL (the value):
+// { "Self": "SE" } shows "Self" in the dropdown and writes 'SE'. The label is looked up on the
+// server from the saved definition, so a client can never smuggle in an arbitrary value.
+// Fields without optionPairs behave exactly as before.
+function resolveOption(raw, field, label) {
+  if (field.dataType !== "JSON" || !field.optionPairs?.length) return raw;
+  if (raw === undefined || raw === null || raw === "") return raw;
+  const text = String(raw).trim();
+  const pair = field.optionPairs.find((p) => p.label === text);
+  if (!pair) throw new ApiError(400, `"${label}" has no option "${text}"`);
+  return pair.value;
+}
+
+// Renders one value for a field/placeholder: resolve its option mapping, then render by type.
+const renderFieldValue = (raw, field, label) =>
+  renderValue(resolveOption(raw, field, label), field.dataType, label);
+
 // Normalizes a multi-value input into a clean list: trimmed, blanks dropped, duplicates
 // removed (first occurrence wins, order kept). Accepts an array (what the UI sends) or a
 // string — admin-defined default values are stored as "a, b, c".
 function toList(raw) {
-  const items = Array.isArray(raw) ? raw : raw == null ? [] : String(raw).split(/[\n\r,]+/);
+  const items = Array.isArray(raw)
+    ? raw
+    : raw == null
+      ? []
+      : String(raw).split(/[\n\r,]+/);
   const seen = new Set();
   const list = [];
   for (const item of items) {
@@ -60,12 +92,17 @@ function toList(raw) {
   return list;
 }
 
-const renderList = (items, dataType, label) => items.map((item) => renderValue(item, dataType, label));
+const renderList = (items, field, label) =>
+  items.map((item) => renderFieldValue(item, field, label));
 
 // Resolves one placeholder to the text that replaces its {{token}}.
 function resolvePlaceholder(placeholder, provided) {
   const label = placeholder.label || placeholder.name;
-  const missing = () => new ApiError(400, `Missing required value for placeholder "${placeholder.name}"`);
+  const missing = () =>
+    new ApiError(
+      400,
+      `Missing required value for placeholder "${placeholder.name}"`,
+    );
 
   if (isMultiple(placeholder)) {
     let items = toList(provided);
@@ -75,60 +112,93 @@ function resolvePlaceholder(placeholder, provided) {
     }
     // An optional list left empty becomes NULL so a hand-written `IN ({{Ids}})` stays
     // valid SQL (it simply matches nothing) instead of turning into the syntax error `IN ()`.
-    return items.length === 0 ? "NULL" : renderList(items, placeholder.dataType, label).join(", ");
+    return items.length === 0
+      ? "NULL"
+      : renderList(items, placeholder, label).join(", ");
   }
 
-  const isEmpty = provided === undefined || provided === null || provided === "";
+  const isEmpty =
+    provided === undefined || provided === null || provided === "";
   if (placeholder.required && isEmpty) throw missing();
-  return renderValue(isEmpty ? placeholder.defaultValue : provided, placeholder.dataType, label);
+  return renderFieldValue(
+    isEmpty ? placeholder.defaultValue : provided,
+    placeholder,
+    label,
+  );
 }
 
-const chosenFields = (fields, selectedNames) => fields.filter((f) => selectedNames.includes(f.fieldName));
+const chosenFields = (fields, selectedNames) =>
+  fields.filter((f) => selectedNames.includes(f.fieldName));
 
 // Builds a dynamic SET clause for UPDATE templates from the fields the user checked, plus their values.
-export function buildSetClause(updatableFields, selectedFieldNames, fieldValues) {
+export function buildSetClause(
+  updatableFields,
+  selectedFieldNames,
+  fieldValues,
+) {
   const chosen = chosenFields(updatableFields, selectedFieldNames);
   if (chosen.length === 0) {
     throw new ApiError(400, "Select at least one field to update");
   }
   return chosen
-    .map((f) => `${f.columnName} = ${renderValue(fieldValues[f.fieldName] ?? f.defaultValue, f.dataType, f.fieldName)}`)
+    .map(
+      (f) =>
+        `${f.columnName} = ${renderFieldValue(fieldValues[f.fieldName] ?? f.defaultValue, f, f.fieldName)}`,
+    )
     .join(",\n  ");
 }
 
 // Builds a dynamic INSERT column/value list from the fields the user checked, plus their values.
-export function buildInsertClause(updatableFields, selectedFieldNames, fieldValues) {
+export function buildInsertClause(
+  updatableFields,
+  selectedFieldNames,
+  fieldValues,
+) {
   const chosen = chosenFields(updatableFields, selectedFieldNames);
   if (chosen.length === 0) {
     throw new ApiError(400, "Select at least one field to insert");
   }
   const columns = chosen.map((f) => f.columnName).join(", ");
   const values = chosen
-    .map((f) => renderValue(fieldValues[f.fieldName] ?? f.defaultValue, f.dataType, f.fieldName))
+    .map((f) =>
+      renderFieldValue(
+        fieldValues[f.fieldName] ?? f.defaultValue,
+        f,
+        f.fieldName,
+      ),
+    )
     .join(", ");
   return { columns, values };
 }
 
 // Builds a dynamic WHERE clause from the conditions the user checked, joined by AND/OR.
 // A `multiple` field becomes `column IN (a, b, c)`; every other field is `column = value`.
-export function buildWhereClause(whereFields, selectedFieldNames, fieldValues, logic = "AND") {
+export function buildWhereClause(
+  whereFields,
+  selectedFieldNames,
+  fieldValues,
+  logic = "AND",
+) {
   const chosen = chosenFields(whereFields, selectedFieldNames);
   if (chosen.length === 0) {
-    throw new ApiError(400, "Select at least one condition for the WHERE clause");
+    throw new ApiError(
+      400,
+      "Select at least one condition for the WHERE clause",
+    );
   }
   const joiner = logic === "OR" ? " OR " : " AND ";
   return chosen
     .map((f) => {
       const provided = fieldValues[f.fieldName] ?? f.defaultValue;
       if (!isMultiple(f)) {
-        return `${f.columnName} = ${renderValue(provided, f.dataType, f.fieldName)}`;
+        return `${f.columnName} = ${renderFieldValue(provided, f, f.fieldName)}`;
       }
       const items = toList(provided);
       if (items.length === 0) {
         // `IN ()` is a syntax error in every database — say what's missing instead.
         throw new ApiError(400, `Add at least one value for "${f.fieldName}"`);
       }
-      return `${f.columnName} IN (${renderList(items, f.dataType, f.fieldName).join(", ")})`;
+      return `${f.columnName} IN (${renderList(items, f, f.fieldName).join(", ")})`;
     })
     .join(joiner);
 }
@@ -152,15 +222,37 @@ export function generateSql(template, input = {}) {
   const tokens = new Map();
 
   for (const placeholder of template.placeholders) {
-    tokens.set(placeholder.name, resolvePlaceholder(placeholder, placeholderValues[placeholder.name]));
+    tokens.set(
+      placeholder.name,
+      resolvePlaceholder(placeholder, placeholderValues[placeholder.name]),
+    );
   }
 
-  if (template.queryType === "UPDATE" && template.updatableFields.length > 0 && selectedUpdateFields.length > 0) {
-    tokens.set("SET_CLAUSE", buildSetClause(template.updatableFields, selectedUpdateFields, updateFieldValues));
+  if (
+    template.queryType === "UPDATE" &&
+    template.updatableFields.length > 0 &&
+    selectedUpdateFields.length > 0
+  ) {
+    tokens.set(
+      "SET_CLAUSE",
+      buildSetClause(
+        template.updatableFields,
+        selectedUpdateFields,
+        updateFieldValues,
+      ),
+    );
   }
 
-  if (template.queryType === "INSERT" && template.updatableFields.length > 0 && selectedUpdateFields.length > 0) {
-    const { columns, values } = buildInsertClause(template.updatableFields, selectedUpdateFields, updateFieldValues);
+  if (
+    template.queryType === "INSERT" &&
+    template.updatableFields.length > 0 &&
+    selectedUpdateFields.length > 0
+  ) {
+    const { columns, values } = buildInsertClause(
+      template.updatableFields,
+      selectedUpdateFields,
+      updateFieldValues,
+    );
     tokens.set("INSERT_COLUMNS", columns);
     tokens.set("INSERT_VALUES", values);
   }
@@ -168,10 +260,17 @@ export function generateSql(template, input = {}) {
   if (template.whereFields.length > 0 && selectedWhereFields.length > 0) {
     tokens.set(
       "WHERE_CLAUSE",
-      buildWhereClause(template.whereFields, selectedWhereFields, whereFieldValues, template.whereLogic)
+      buildWhereClause(
+        template.whereFields,
+        selectedWhereFields,
+        whereFieldValues,
+        template.whereLogic,
+      ),
     );
   }
 
   // Unknown tokens are left as written, same as before.
-  return template.sqlTemplate.replace(TOKEN_RE, (match, name) => (tokens.has(name) ? tokens.get(name) : match));
+  return template.sqlTemplate.replace(TOKEN_RE, (match, name) =>
+    tokens.has(name) ? tokens.get(name) : match,
+  );
 }
